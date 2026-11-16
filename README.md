@@ -1,42 +1,33 @@
-# API de réservation de restaurant
+# dotnet-restaurant-api
 
-Petite API REST en ASP.NET Core (.NET 10, minimal API) pour gérer les réservations d'une salle de 40 couverts. Les données sont gardées en mémoire et disparaissent à l'arrêt du serveur.
+Une petite API de réservation pour un restaurant, écrite pour me mettre à C# et ASP.NET Core. Elle tourne sur .NET 10 en minimal API et garde tout en mémoire : pas de base de données, les réservations disparaissent quand on coupe le serveur.
 
-## Lancer le projet
+On peut créer une réservation, lister celles d'un jour et en annuler une. La salle fait 40 couverts, une réservation va de 1 à 8 personnes et on ne peut pas réserver dans le passé. J'ai découpé la soirée en créneaux d'une heure : si 19h est complet, une réservation à 19h30 est refusée mais 20h passe.
 
-Il faut le SDK .NET 10. La version est fixée par `global.json`.
+## Lancer
 
 ```bash
 dotnet run --project src/RestaurantApi --urls http://localhost:5000
 dotnet test
 ```
 
-## Routes
-
-| Méthode | Route | Réponses |
-|---|---|---|
-| `POST` | `/reservations` | 201 avec l'en-tête `Location`, 400 si une règle est violée |
-| `GET` | `/reservations?date=2030-06-12` | 200, réservations du jour triées par heure |
-| `GET` | `/reservations/{id}` | 200 ou 404 |
-| `DELETE` | `/reservations/{id}` | 204 ou 404 |
+## Essayer
 
 ```bash
+# créer (201)
 curl -i -X POST http://localhost:5000/reservations \
   -H 'Content-Type: application/json' \
   -d '{"name":"Dupont","dateTime":"2030-06-12T19:30:00","covers":4}'
+
+# lister un jour
+curl "http://localhost:5000/reservations?date=2030-06-12"
+
+# annuler (204, ou 404 si l'id n'existe pas)
+curl -i -X DELETE http://localhost:5000/reservations/<id>
 ```
 
-Les erreurs suivent le format ProblemDetails (RFC 9457) avec le motif dans `detail`.
+Quand une règle n'est pas respectée, l'API répond 400 avec la raison dans le champ `detail`.
 
-## Règles métier
+## Dans le code
 
-- pas de réservation dans le passé
-- de 1 à 8 personnes par réservation
-- 40 couverts au plus par créneau, un créneau correspondant à une heure pleine (19h00 à 19h59)
-
-## Organisation du code
-
-- `Reservation.cs` : les records `Reservation` et `CreateReservationRequest`, plus le résultat d'une création
-- `ReservationService.cs` : les règles métier, enregistré en singleton par injection de dépendances. Un verrou protège la vérification de capacité contre deux créations simultanées.
-- `Program.cs` : configuration des services et déclaration des routes
-- `tests/RestaurantApi.Tests` : tests xUnit du service, avec une horloge (`TimeProvider`) figée pour ne pas dépendre de la date du jour
+Les règles sont dans `ReservationService`, injecté en singleton pour que les données survivent d'une requête à l'autre. La vérification de capacité est protégée par un verrou : sans lui, deux réservations envoyées en même temps pouvaient passer toutes les deux et dépasser les 40 couverts. L'heure courante passe par un `TimeProvider`, ce qui permet aux tests xUnit de figer la date.
